@@ -1,0 +1,41 @@
+{
+  "os": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "CPython 3.10.16",
+  "startedAt": "2025-04-09T14:40:25.386608Z",
+  "program": "/home/serragomeza/projects/tdmpc2-jax/tdmpc2_jax/train.py",
+  "codePath": "tdmpc2_jax/train.py",
+  "git": {
+    "remote": "git@github.com:alvaro-serra/tdmpc2-jax.git",
+    "commit": "bf27686bdf0ffe9036ba048557bfa21215c9916e"
+  },
+  "email": "a.serragomez@tudelft.nl",
+  "root": "/home/serragomeza/projects/tdmpc2-jax",
+  "host": "aserra",
+  "executable": "/home/serragomeza/miniconda3/envs/jaxtdmpc/bin/python",
+  "codePathLocal": "tdmpc2_jax/train.py",
+  "cpu_count": 10,
+  "cpu_count_logical": 20,
+  "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1081101176832",
+      "used": "64181985280"
+    }
+  },
+  "memory": {
+    "total": "8156196864"
+  },
+  "cpu": {
+    "count": 10,
+    "countLogical": 20
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+      "memoryTotal": "6439305216",
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.7"
+}

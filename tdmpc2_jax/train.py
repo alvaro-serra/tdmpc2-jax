@@ -52,7 +52,7 @@ def train(cfg: dict):
           project=wandb_config.project,
           notes="baseline",
           tags=["PPO", "MPPI"],
-          config=cfg,
+          config=dict(cfg),
           # mode=config["WANDB_MODE"],
       )
 
@@ -292,7 +292,7 @@ def train(cfg: dict):
             wandb_log_dict_train[f'updates/{k}_mean'] = np.mean(v)
             wandb_log_dict_train[f'updates/{k}_std'] = np.std(v)
             wandb_log_dict_train[f'updates/global_step'] = global_step
-          wandb.log(wandb_log_dict_train)
+          if wandb_config.log_wandb: wandb.log(wandb_log_dict_train)
 
         # SAVE THE POLICY
         mngr.save(

@@ -6,4 +6,4 @@
 #SBATCH --time=1-0:00:00
 #SBATCH --partition=gpu-medium
 
-python purejaxrl/M
+python tdmpc2_jax/train.py

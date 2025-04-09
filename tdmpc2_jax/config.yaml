@@ -10,8 +10,8 @@ save_interval_steps: 100000
 log_interval_steps: 10000
 
 env:
-  backend: gymnasium
-  env_id: HalfCheetah-v4
+  backend: dmc #gymnasium
+  env_id: dog-run #HalfCheetah-v4
   num_envs: 4
   utd_ratio: 0.5
   asynchronous: True
@@ -64,5 +64,5 @@ tdmpc2:
 
 wandb:
   log_wandb: True
-  project: "td-mpc / po-mpc development"
+  project: "po-mpc development"
 
