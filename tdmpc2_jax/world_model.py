@@ -156,7 +156,7 @@ class WorldModel(struct.PyTreeNode):
     else:
       continue_model = None
 
-    if tabulate:
+    if tabulate: ## PRINT THE CONFIGURATION
       print("Dynamics Model")
       print("--------------")
       print(dynamics_module.tabulate(jax.random.key(0), jnp.ones(
@@ -184,7 +184,7 @@ class WorldModel(struct.PyTreeNode):
         print("--------------")
         print(continue_module.tabulate(jax.random.key(0), jnp.ones(
             latent_dim), compute_flops=True))
-
+    # RETURN OBJECT WITH THESE ATTRIBUTES
     return cls(
         # Spaces
         action_dim=action_dim,
@@ -211,7 +211,7 @@ class WorldModel(struct.PyTreeNode):
   def encode(self, obs: np.ndarray, params: Dict, key: PRNGKeyArray) -> jax.Array:
     if self.symlog_obs:
       obs = jax.tree.map(lambda x: symlog(x), obs)
-    return self.encoder.apply_fn({'params': params}, obs, rngs={'dropout': key})
+    return self.encoder.apply_fn({'params': params}, obs, rngs={'dropout': key}) # THIS DROPOUT DOES NOT DO ANYTHING
 
   @jax.jit
   def next(self, z: jax.Array, a: jax.Array, params: Dict) -> jax.Array:

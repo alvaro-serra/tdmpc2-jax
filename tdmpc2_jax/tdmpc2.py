@@ -159,16 +159,20 @@ class TDMPC2(struct.PyTreeNode):
       z_t = self.model.next(
           z_t, policy_actions[t], self.model.dynamics_model.params
       )
+
+    # LAST SET OF ACTIONS BEING COMPUTED
     policy_actions = policy_actions.at[-1].set(
         self.model.sample_actions(
             z_t, self.model.policy_model.params, key=prior_noise_keys[-1])[0]
     )
 
+    # ACTIONS PLACED INTO MPPI BATCHED ACTIONS
     actions = jnp.zeros(
         (self.horizon, self.population_size, self.model.action_dim))
     actions = actions.at[:, :self.policy_prior_samples].set(policy_actions)
 
     # MPPI
+    # Population noise
     key, mppi_noise_key, *value_keys = \
         jax.random.split(key, 2+self.mppi_iterations)
     noise = jax.random.normal(
@@ -190,14 +194,15 @@ class TDMPC2(struct.PyTreeNode):
     for i in range(self.mppi_iterations):
       # Sample actions
       actions = actions.at[:, self.policy_prior_samples:].set(
-          mean[:, None, :] + std[:, None, :] * noise[i]
+          mean[:, None, :] + std[:, None, :] * noise[i]  ## The none here allows to broadcast sum with mean
+                                                         ## and product with std across noise
       )
       actions = actions.clip(-1, 1)
 
-      # Compute elites
-      value = self.estimate_value(z_t, actions, key=value_keys[i])
+      # Simulate action population and compute elites
+      value = self.estimate_value(z_t, actions, key=value_keys[i]) ## MPPI SIMULATIONS HAPPEN HERE TODO
       _, elite_inds = jax.lax.top_k(value, self.num_elites)
-      elite_values, elite_actions = value[elite_inds], actions[:, elite_inds]
+      elite_values, elite_actions = value[elite_inds], actions[:, elite_inds] ## reminder: actions (horizon, population)
 
       # Update population distribution
       score = jnp.exp(self.temperature * (elite_values - elite_values.max()))
@@ -208,6 +213,7 @@ class TDMPC2(struct.PyTreeNode):
                   (elite_actions - mean[:, None, :])**2, axis=1)
       ).clip(self.min_plan_std, self.max_plan_std)
 
+    ## MPPI ITERATION HAS FINISHED
     # Sample final action
     key, action_select_key, action_noise_key = jax.random.split(key, 3)
     action_ind = jax.random.choice(
@@ -231,7 +237,7 @@ class TDMPC2(struct.PyTreeNode):
              truncated: jax.Array,
              *,
              key: PRNGKeyArray
-             ) -> Tuple[TDMPC2, Dict[str, Any]]:
+             ) -> Tuple[TDMPC2, Dict[str, Any]]:   ## TODO
 
     world_model_key, policy_key = jax.random.split(key, 2)
 
@@ -239,7 +245,7 @@ class TDMPC2(struct.PyTreeNode):
                             dynamics_params: Dict,
                             value_params: Dict,
                             reward_params: Dict,
-                            continue_params: Dict):
+                            continue_params: Dict): #
       encoder_key, td_target_key, Q_key = jax.random.split(world_model_key, 3)
 
       # Encoder forward passes
@@ -340,7 +346,7 @@ class TDMPC2(struct.PyTreeNode):
       new_continue_model = self.model.continue_model
 
     # Update policy
-    def policy_loss_fn(params: Dict):
+    def policy_loss_fn(params: Dict): ## TODO
       action_key, Q_key = jax.random.split(policy_key, 2)
       actions, _, _, log_probs = self.model.sample_actions(
           zs, params, key=action_key)
@@ -376,7 +382,8 @@ class TDMPC2(struct.PyTreeNode):
     return new_agent, info
 
   @jax.jit
-  def estimate_value(self, z: jax.Array, actions: jax.Array, key: PRNGKeyArray) -> jax.Array:
+  def estimate_value(self, z: jax.Array, actions: jax.Array, key: PRNGKeyArray) -> jax.Array: ## COMPUTE VALUE OF POP. ACTIONS
+    # REMINDER: ACTIONS IS THE POPULATION OF ACTIONS
     G, discount = 0.0, 1.0
     for t in range(self.horizon):
       reward, _ = self.model.reward(
@@ -392,6 +399,7 @@ class TDMPC2(struct.PyTreeNode):
 
       discount *= self.discount * continues
 
+    ## LAST ACTION FOR Q-VALUE OBTENTION
     action_key, Q_key = jax.random.split(key, 2)
     next_action = self.model.sample_actions(
         z, self.model.policy_model.params, key=action_key)[0]
@@ -402,7 +410,7 @@ class TDMPC2(struct.PyTreeNode):
     return sg(G + discount * Q)
 
   @jax.jit
-  def td_target(self, next_z: jax.Array, reward: jax.Array, terminal: jax.Array,
+  def td_target(self, next_z: jax.Array, reward: jax.Array, terminal: jax.Array,  ## TODO
                 key: PRNGKeyArray) -> jax.Array:
     action_key, ensemble_key, Q_key = jax.random.split(key, 3)
     next_action = self.model.sample_actions(

@@ -22,6 +22,9 @@ from tdmpc2_jax.data import SequentialReplayBuffer
 from tdmpc2_jax.envs.dmcontrol import make_dmc_env
 from tdmpc2_jax.networks import NormedLinear
 
+## Wandb: log data in WANDB
+import wandb
+
 gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
   tf.config.experimental.set_memory_growth(gpu, True)
@@ -33,13 +36,25 @@ def train(cfg: dict):
   encoder_config = cfg['encoder']
   model_config = cfg['world_model']
   tdmpc_config = cfg['tdmpc2']
+  wandb_config = cfg['wandb']
 
   ##############################
   # Logger setup
   ##############################
+  # Tensorboard
   output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
   writer = tensorboard.SummaryWriter(os.path.join(output_dir, 'tensorboard'))
   writer.hparams(cfg)
+  # Wandb TODO it acts as writer, use it parallely at the same time that we would be logging things with writer
+  if wandb_config.log_wandb:
+      wandb.init(
+          # entity=config["ENTITY"],
+          project=wandb_config.project,
+          notes="baseline",
+          tags=["PPO", "MPPI"],
+          config=cfg,
+          # mode=config["WANDB_MODE"],
+      )
 
   ##############################
   # Environment setup
@@ -61,6 +76,7 @@ def train(cfg: dict):
       return env
     raise ValueError("Environment not supported:", env_config)
 
+  # SETUP VECTORIZED ENVIRONMENTS
   vector_env_cls = gym.vector.AsyncVectorEnv if env_config.asynchronous else gym.vector.SyncVectorEnv
   env = vector_env_cls(
       [
@@ -95,8 +111,7 @@ def train(cfg: dict):
   ##############################
   dummy_obs, _ = env.reset()
   dummy_action = env.action_space.sample()
-  dummy_next_obs, dummy_reward, dummy_term, dummy_trunc, _ = \
-      env.step(dummy_action)
+  dummy_next_obs, dummy_reward, dummy_term, dummy_trunc, _ = env.step(dummy_action)
   replay_buffer = SequentialReplayBuffer(
       capacity=cfg.max_steps//env_config.num_envs,
       num_envs=env_config.num_envs,
@@ -107,9 +122,9 @@ def train(cfg: dict):
           reward=dummy_reward,
           next_observation=dummy_next_obs,
           terminated=dummy_term,
-          truncated=dummy_trunc)
+          truncated=dummy_trunc) # Add information on the prior policy
   )
-
+  # CREATE ENCODER
   encoder = TrainState.create(
       apply_fn=encoder_module.apply,
       params=encoder_module.init(encoder_key, dummy_obs)['params'],
@@ -118,16 +133,19 @@ def train(cfg: dict):
           optax.clip_by_global_norm(model_config.max_grad_norm),
           optax.adam(encoder_config.learning_rate),
       ))
-
+  ## CREATE WORLD MODEL
   model = WorldModel.create(
-      action_dim=np.prod(env.get_wrapper_attr('single_action_space').shape),
+      action_dim=np.prod(env.get_wrapper_attr('single_action_space').shape), # IS THIS SOME KIND OF FLATTEN?
       encoder=encoder,
       **model_config,
       key=model_key)
   if model.action_dim >= 20:
     tdmpc_config.mppi_iterations += 2
 
+  ## CREATE TDMPC2 AGENT/ALGORITHM OBJECT TODO
   agent = TDMPC2.create(world_model=model, **tdmpc_config)
+
+  # INITIALIZE LOGGING STEP COUNT AND CHECKPOINT MANAGER
   global_step = 0
 
   options = ocp.CheckpointManagerOptions(
@@ -166,21 +184,26 @@ def train(cfg: dict):
     ##############################
     # Training loop
     ##############################
+    # INIT EPISODE INFO / COUNT X ENVIRONMENT
     ep_info = {}
     ep_count = np.zeros(env_config.num_envs, dtype=int)
     prev_logged_step = global_step
+    # PREV MPC PLAN INIT
     prev_plan = (
         jnp.zeros((env_config.num_envs, agent.horizon, agent.model.action_dim)),
         jnp.full((env_config.num_envs, agent.horizon,
                   agent.model.action_dim), agent.max_plan_std)
     )
+    # INIT ENVIRONMENTS
     observation, _ = env.reset(seed=cfg.seed)
-
+    # INITIAL STEPS FOR FILLING THE REPLAY BUFFER
     T = 500
     seed_steps = int(max(5*T, 1000) * env_config.num_envs *
                      env_config.utd_ratio)
-    pbar = tqdm.tqdm(initial=global_step, total=cfg.max_steps)
+    pbar = tqdm.tqdm(initial=global_step, total=cfg.max_steps) # Progress bar
+    # FOR EVERY TRAINING STEP
     for global_step in range(global_step, cfg.max_steps, env_config.num_envs):
+      # IF SEED_STEPS STILL NOT THERE, RANDOM ACTION - ELSE:  MADE THE AGENT ACT
       if global_step <= seed_steps:
         action = env.action_space.sample()
       else:
@@ -188,11 +211,11 @@ def train(cfg: dict):
         prev_plan = (prev_plan[0],
                      jnp.full_like(prev_plan[1], agent.max_plan_std))
         action, prev_plan = agent.act(
-            observation, prev_plan=prev_plan, train=True, key=action_key)
+            observation, prev_plan=prev_plan, train=True, key=action_key) # From here we obtain mppi's plan TODO
 
-      next_observation, reward, terminated, truncated, info = env.step(action)
+      next_observation, reward, terminated, truncated, info = env.step(action) # Here is where we obtain the unbiased reward TODO
 
-      # Get real final observation and store transition
+      # GET REAL FINAL OBSERVATION AND STORE TRANSITION
       real_next_observation = next_observation.copy()
       for ienv, trunc in enumerate(truncated):
         if trunc:
@@ -203,7 +226,7 @@ def train(cfg: dict):
           reward=reward,
           next_observation=real_next_observation,
           terminated=terminated,
-          truncated=truncated))
+          truncated=truncated))  # ADD INFO ABOUT THE PRIOR TODO
       observation = next_observation
 
       # Handle terminations/truncations
@@ -213,6 +236,7 @@ def train(cfg: dict):
             prev_plan[0].at[done].set(0),
             prev_plan[1].at[done].set(agent.max_plan_std)
         )
+      # IF INFO OF FINAL EPISODES ARE IN INFO, LOG THEM TODO WANDB ADAPTATION
       if "final_info" in info:
         for ienv, final_info in enumerate(info["final_info"]):
           if final_info is None:
@@ -224,7 +248,13 @@ def train(cfg: dict):
           writer.scalar(f'episode/length',
                         final_info['episode']['l'], global_step + ienv)
           ep_count[ienv] += 1
+          wandb_log_dict = {"train/env_step": global_step + ienv,
+                      "train/episode_return": final_info['episode']['r'],
+                      "train/episode_length": final_info['episode']['l']
+          }
+          if wandb_config.log_wandb: wandb.log(wandb_log_dict)
 
+      # DECIDE HOW MANY POLICY UPDATE STEPS ARE TO BE DONE
       if global_step >= seed_steps:
         if global_step == seed_steps:
           print('Pre-training on seed data...')
@@ -238,6 +268,7 @@ def train(cfg: dict):
         if log_this_step:
           all_train_info = defaultdict(list)
           prev_logged_step = global_step
+          wandb_log_dict_train = {}
 
         for iupdate in range(num_updates):
           batch = replay_buffer.sample(agent.batch_size, agent.horizon)
@@ -249,16 +280,21 @@ def train(cfg: dict):
               terminated=batch['terminated'],
               truncated=batch['truncated'],
               key=update_keys[iupdate])
-
+          # SAVE ALL UPDATE INFO (LOSSES) AND ALL INTO THIS
           if log_this_step:
             for k, v in train_info.items():
               all_train_info[k].append(np.array(v))
-
+        # LOG TRAINING INFO (IF IT APPLIES) TODO WANDB ADAPTATION
         if log_this_step:
           for k, v in all_train_info.items():
             writer.scalar(f'train/{k}_mean', np.mean(v), global_step)
             writer.scalar(f'train/{k}_std', np.std(v), global_step)
+            wandb_log_dict_train[f'updates/{k}_mean'] = np.mean(v)
+            wandb_log_dict_train[f'updates/{k}_std'] = np.std(v)
+            wandb_log_dict_train[f'updates/global_step'] = global_step
+          wandb.log(wandb_log_dict_train)
 
+        # SAVE THE POLICY
         mngr.save(
             global_step,
             args=ocp.args.Composite(

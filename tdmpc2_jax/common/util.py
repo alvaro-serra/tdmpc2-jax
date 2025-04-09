@@ -41,6 +41,8 @@ def two_hot(x: jax.Array, low: float, high: float, num_bins: int) -> jax.Array:
   two_hot = jax.nn.one_hot(bin_index, num_bins) * (1 - bin_offset[..., None]) +\
       jax.nn.one_hot(bin_index + 1, num_bins) * bin_offset[..., None]
 
+  ## It is a multidimensional represenation of a scalar
+  # Where is the scalar located between the two nearest bins, e.g. 15 would be 0.5,0.5 between bins (of size 10) 10 and 20
   return two_hot
 
 

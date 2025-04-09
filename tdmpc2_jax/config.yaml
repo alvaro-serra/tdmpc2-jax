@@ -61,3 +61,8 @@ tdmpc2:
   value_coef: 0.1
   entropy_coef: 1e-4
   tau: 0.01
+
+wandb:
+  log_wandb: True
+  project: "td-mpc / po-mpc development"
+
