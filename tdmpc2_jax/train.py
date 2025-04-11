@@ -42,7 +42,10 @@ def train(cfg: dict):
   # Logger setup
   ##############################
   # Tensorboard
-  output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+  if cfg["output_dir"] is None:
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+  else:
+      output_dir = cfg["output_dir"]
   writer = tensorboard.SummaryWriter(os.path.join(output_dir, 'tensorboard'))
   writer.hparams(cfg)
   # Wandb TODO it acts as writer, use it parallely at the same time that we would be logging things with writer
@@ -142,7 +145,7 @@ def train(cfg: dict):
   if model.action_dim >= 20:
     tdmpc_config.mppi_iterations += 2
 
-  ## CREATE TDMPC2 AGENT/ALGORITHM OBJECT TODO
+  ## CREATE TDMPC2 AGENT/ALGORITHM OBJECT DONE
   agent = TDMPC2.create(world_model=model, **tdmpc_config)
 
   # INITIALIZE LOGGING STEP COUNT AND CHECKPOINT MANAGER

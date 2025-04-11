@@ -6,8 +6,10 @@ hydra:
 
 seed: 1
 max_steps: 2_500_000
-save_interval_steps: 100000
+save_interval_steps: 2400000
 log_interval_steps: 10000
+save_bool: False
+output_dir: "/home/serragomeza/data1/tdmpc2_outputs"
 
 env:
   backend: dmc #gymnasium
