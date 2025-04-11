@@ -5,5 +5,8 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --time=1-0:00:00
 #SBATCH --partition=gpu-medium
+#SBATCH --array=0-2
 
-python tdmpc2_jax/train.py
+SEED=$SLURM_ARRAY_TASK_ID
+
+python tdmpc2_jax/train.py seed=$SEED >"${SEED}.out" 2>&1
