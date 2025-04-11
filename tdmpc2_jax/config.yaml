@@ -4,7 +4,7 @@ hydra:
   run:
     dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
 
-seed: 2
+seed: 1
 max_steps: 2_500_000
 save_interval_steps: 2400000
 log_interval_steps: 10000
